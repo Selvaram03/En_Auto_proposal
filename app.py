@@ -14,7 +14,8 @@ st.title("📄 Techno-Commercial Proposal Auto Generator")
 
 st.markdown("""
 Upload your Excel sheet with **Parameters** and **Value** columns.  
-The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically.
+The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically,  
+including those in **headers** and **footers**.
 """)
 
 # Upload Excel
@@ -26,6 +27,9 @@ TEMPLATE_PATH = "input_template.docx"
 
 # ========== Core Function ==========
 def fill_template(df, template_path):
+    import re
+    from docx import Document
+
     # Clean headers
     df.columns = df.columns.str.strip()
     df["Parameters"] = df["Parameters"].astype(str).str.strip()
@@ -37,27 +41,47 @@ def fill_template(df, template_path):
     # Load Word doc
     doc = Document(template_path)
 
-    # Function to replace placeholders like {{Parameter Name}}
+    # --- helper: replace placeholders like {{Parameter Name}} ---
     def replace_placeholders(text):
-        matches = re.findall(r"\{\{(.*?)\}\}", text)
-        for m in matches:
-            key = m.strip().lower()
-            if key in param_dict:
-                text = text.replace(f"{{{{{m}}}}}", param_dict[key])
+        for key, value in param_dict.items():
+            pattern = r"\{\{\s*" + re.escape(key) + r"\s*\}\}"
+            text = re.sub(pattern, value, text, flags=re.IGNORECASE)
         return text
 
-    # Replace in all paragraphs
-    for para in doc.paragraphs:
-        if "{{" in para.text:
-            for run in para.runs:
-                run.text = replace_placeholders(run.text)
+    # --- helper: process paragraph runs (merge + replace) ---
+    def process_paragraphs(paragraphs):
+        for para in paragraphs:
+            if "{{" in para.text:
+                full_text = "".join(run.text for run in para.runs)
+                new_text = replace_placeholders(full_text)
+                if new_text != full_text:
+                    for r in para.runs:
+                        r.text = ""
+                    para.add_run(new_text)
 
-    # Replace in all tables (cells)
+    # --- main body ---
+    process_paragraphs(doc.paragraphs)
+
+    # --- tables ---
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 if "{{" in cell.text:
                     cell.text = replace_placeholders(cell.text)
+
+    # --- headers & footers (all sections) ---
+    for section in doc.sections:
+        header = section.header
+        footer = section.footer
+        process_paragraphs(header.paragraphs)
+        process_paragraphs(footer.paragraphs)
+
+        # Replace inside header/footer tables too
+        for table in header.tables + footer.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if "{{" in cell.text:
+                        cell.text = replace_placeholders(cell.text)
 
     return doc
 
@@ -86,7 +110,7 @@ if uploaded_excel is not None:
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 )
 
-                # PDF export (optional)
+                # Optional PDF export
                 try:
                     from docx2pdf import convert
                     with tempfile.TemporaryDirectory() as tmpdir:
