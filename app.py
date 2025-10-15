@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
+from docx.shared import Pt  # NEW IMPORT: Added for explicit font size handling
 from io import BytesIO
 import re, tempfile, os, importlib.util, subprocess
 
@@ -19,8 +20,8 @@ except:
     st.sidebar.warning("Logo not found at provided path.")
 
 st.markdown("""
-Upload your Excel sheet with **Parameters** and **Value** columns.  
-The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically,  
+Upload your Excel sheet with **Parameters** and **Value** columns.  
+The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically,  
 including those in **headers** and **footers**.
 """)
 
@@ -33,9 +34,6 @@ TEMPLATE_PATH = "input_template.docx"
 
 # ========== Core Function ==========
 def fill_template(df, template_path):
-    import re
-    from docx import Document
-
     # Clean headers
     df.columns = df.columns.str.strip()
     df["Parameters"] = df["Parameters"].astype(str).str.strip()
@@ -47,52 +45,86 @@ def fill_template(df, template_path):
     # Load Word doc
     doc = Document(template_path)
 
-    # --- helper: replace placeholders like {{Parameter Name}} ---
+    # --- helper: replace placeholders like {{Parameter Name}} (Unchanged) ---
     def replace_placeholders(text):
         for key, value in param_dict.items():
+            # Use an efficient regex pattern
             pattern = r"\{\{\s*" + re.escape(key) + r"\s*\}\}"
             text = re.sub(pattern, value, text, flags=re.IGNORECASE)
         return text
 
-    # --- helper: process paragraph runs (merge + replace) ---
+    # --- helper: process paragraph runs (FIXED: Preserves style/font - Issue 3) ---
     def process_paragraphs(paragraphs):
         for para in paragraphs:
             if "{{" in para.text:
                 full_text = "".join(run.text for run in para.runs)
                 new_text = replace_placeholders(full_text)
+
                 if new_text != full_text:
+                    # Capture formatting properties of the first run BEFORE clearing
+                    first_run = para.runs[0] if para.runs else None
+                    first_run_style = first_run.style if first_run else None
+                    
+                    # Capture font size (which is an object like Pt)
+                    first_run_font_size = first_run.font.size if first_run and first_run.font.size else None
+
+                    # Clear all existing runs
                     for r in para.runs:
                         r.text = ""
-                    para.add_run(new_text)
+                    
+                    # Add the new text
+                    new_run = para.add_run(new_text)
 
-    # --- main body ---
+                    # Restore style/formatting
+                    if first_run_style:
+                        new_run.style = first_run_style
+                    
+                    # Explicitly set the font to Calibri (Fix for Issue 3)
+                    new_run.font.name = 'Calibri'
+                    
+                    # Restore size if captured
+                    if first_run_font_size:
+                         new_run.font.size = first_run_font_size
+
+    # --- helper: process cell content (NEW: Handles nested tables/cells - Issue 2) ---
+    def process_cell(cell):
+        # Process paragraphs within the cell (handles replacement and formatting)
+        process_paragraphs(cell.paragraphs)
+
+        # Recursively process any nested tables
+        for nested_table in cell.tables:
+            for row in nested_table.rows:
+                for cell in row.cells:
+                    process_cell(cell) # Recursive call
+
+    # --- main body (includes 1st page content) ---
     process_paragraphs(doc.paragraphs)
 
-    # --- tables ---
+    # --- tables (Now uses recursive cell processor for all main body tables/cells) ---
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                if "{{" in cell.text:
-                    cell.text = replace_placeholders(cell.text)
+                process_cell(cell)
 
     # --- headers & footers (all sections) ---
     for section in doc.sections:
         header = section.header
         footer = section.footer
+        
+        # Process paragraphs in header/footer
         process_paragraphs(header.paragraphs)
         process_paragraphs(footer.paragraphs)
 
-        # Replace inside header/footer tables too
+        # Process tables in header/footer (Uses recursive cell processor now)
         for table in header.tables + footer.tables:
             for row in table.rows:
                 for cell in row.cells:
-                    if "{{" in cell.text:
-                        cell.text = replace_placeholders(cell.text)
+                    process_cell(cell)
 
     return doc
 
 
-# ========== App Flow ==========
+# ========== App Flow (Unchanged) ==========
 if uploaded_excel is not None:
     try:
         df = pd.read_excel(uploaded_excel, engine="openpyxl")
@@ -101,7 +133,8 @@ if uploaded_excel is not None:
 
         if st.button("🚀 Generate Word Proposal"):
             try:
-                filled_doc = fill_template(df, TEMPLATE_PATH)
+                # The docx import is now globally available
+                filled_doc = fill_template(df, TEMPLATE_PATH) 
 
                 # Save to memory
                 buffer = BytesIO()
