@@ -26,8 +26,7 @@ except Exception:
     st.sidebar.warning("Logo not found at provided path or could not be loaded.")
 
 st.markdown("""
-Upload your Excel sheet with **Parameters** and **Value** columns.  
-The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically, including those in **text boxes**, **headers**, and **footers**.
+Upload your Excel sheet with **Parameters** and **Value** columns. The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically, including those in **text boxes**, **headers**, and **footers**.
 """)
 
 # ========== Default Excel Template Download ==========
