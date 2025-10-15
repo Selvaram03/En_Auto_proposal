@@ -27,8 +27,7 @@ except Exception:
 
 st.markdown("""
 Upload your Excel sheet with **Parameters** and **Value** columns.  
-The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically,  
-including those in **text boxes**, **headers**, and **footers**, while **preserving Calibri font**.
+The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically, including those in **text boxes**, **headers**, and **footers**.
 """)
 
 # ========== Default Excel Template Download ==========
