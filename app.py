@@ -4,14 +4,13 @@ from docx import Document
 from docx.shared import Pt
 from io import BytesIO
 import re, tempfile, os, importlib.util, subprocess
-from lxml import etree # Needed for XML manipulation
+from lxml import etree 
 
 # ========== Auto-install dependencies if missing ==========
 required_libs = ["openpyxl", "lxml"]
 for lib in required_libs:
     if importlib.util.find_spec(lib) is None:
         try:
-            # Install the library silently
             subprocess.run(["pip", "install", lib], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except subprocess.CalledProcessError:
             st.warning(f"Could not auto-install {lib}. Please install it manually.")
@@ -33,26 +32,18 @@ The app will replace all placeholders in the Word template like `{{Parameter Nam
 including those in **text boxes**, **headers**, and **footers**, while **preserving Calibri font**.
 """)
 
-# Upload Excel
-uploaded_excel = st.file_uploader("📤 Upload Excel File", type=["xlsx"])
-
 # Template path
 TEMPLATE_PATH = "input_template.docx"
 
 
 # ========== Core Function Helpers ==========
-
-# Helper function 1: XML Replacement (FIXED: Robust error handling for empty headers/footers)
 def replace_in_xml(doc_part, param_dict):
     """Replaces text in a document part (body, header, or footer) using XML."""
-    
     try:
-        # Check if the element exists and get the root
         if doc_part.element is None:
             return
         root = doc_part.element.getroottree()
     except AttributeError:
-        # ❌ FINAL FIX: Safely skip if doc_part (header/footer) doesn't have an 'element' attribute
         return
 
     namespaces = {
@@ -62,7 +53,6 @@ def replace_in_xml(doc_part, param_dict):
 
     for key, value in param_dict.items():
         placeholder = "{{" + key + "}}"
-        
         for elem in root.xpath('//w:t|//v:t', namespaces=namespaces):
             if elem.text and placeholder.lower() in elem.text.lower():
                 original_text = elem.text 
@@ -70,10 +60,8 @@ def replace_in_xml(doc_part, param_dict):
                 new_text = re.sub(pattern, value, original_text, flags=re.IGNORECASE)
                 elem.text = new_text
 
-# Helper function 2: Processes paragraphs using docx API (Fixes formatting)
 def process_paragraphs(paragraphs, param_dict):
     """Processes paragraphs using the standard docx API for better formatting control."""
-    
     def replace_placeholders(text):
         for key, value in param_dict.items():
             pattern = r"\{\{\s*" + re.escape(key) + r"\s*\}\}"
@@ -103,7 +91,6 @@ def process_paragraphs(paragraphs, param_dict):
                 if first_run_font_size:
                      new_run.font.size = first_run_font_size
                          
-# Helper function 3: Processes cells recursively (Fixes nested tables)
 def process_cell(cell, param_dict):
     """Processes paragraphs in a cell, including nested tables, for formatting fix."""
     process_paragraphs(cell.paragraphs, param_dict)
@@ -119,46 +106,75 @@ def fill_template(df, template_path):
     param_dict = {p.lower(): v for p, v in zip(df["Parameters"], df["Value"])}
     doc = Document(template_path)
 
-    # 1. XML replacement for the main document body (Catches text boxes/1st page content)
     replace_in_xml(doc, param_dict)
     
-    # 2. Re-run the docx API processor for main paragraphs/tables to fix formatting 
     process_paragraphs(doc.paragraphs, param_dict)
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 process_cell(cell, param_dict) 
 
-    # 3. Headers & Footers: Apply XML replacement and then API fix
     for section in doc.sections:
-        # Apply XML replacement to header/footer
         replace_in_xml(section.header, param_dict)
         replace_in_xml(section.footer, param_dict)
         
-        # Apply API processor for formatting fix
         process_paragraphs(section.header.paragraphs, param_dict)
         process_paragraphs(section.footer.paragraphs, param_dict)
         
-        # Apply API processor for tables in header/footer
         try:
-             # Concatenate tables from both header and footer for processing
             for table in section.header.tables + section.footer.tables:
                 for row in table.rows:
                     for cell in row.cells:
                         process_cell(cell, param_dict)
         except AttributeError:
-            # Skip if section.header or section.footer does not have a 'tables' attribute (unlikely, but safe)
             pass 
 
     return doc
 
+# ========== Downloadable Template Function ==========
+def get_template_excel():
+    """Creates a sample DataFrame and returns it as an Excel file in bytes."""
+    data = {
+        'Parameters': [
+            'Name of Customer', 'Client Name', 'Project Capacity', 
+            'Struct in Caps', 'VL in Caps', 'ST in Caps', 'Offer No', 'FY'
+        ],
+        'Value': [
+            'Bright Night', 'M/S Bright Night', '45 MW (AC)/65.25 MWp (DC)', 
+            'FIXED TILT STRUCTURE', 'KADORA & PETH SANGAVI', 'MAHARASHTRA', '17', '2025-26'
+        ],
+        'S.No.': list(range(1, 9)) # Add a sequence number column if your original file had one
+    }
+    # Use the column order that matches your sample input structure
+    df_sample = pd.DataFrame(data, columns=['S.No.', 'Parameters', 'Value'])
+    
+    output = BytesIO()
+    # Use index=False to prevent writing pandas index column
+    df_sample.to_excel(output, index=False, engine='openpyxl')
+    output.seek(0)
+    return output.read()
 
-# ========== App Flow ==========
+
+# ========== App Flow (Modified to include template download) ==========
+# Add the template download button at the start of the app
+st.download_button(
+    label="⬇️ Download Input Excel Template",
+    data=get_template_excel(),
+    file_name='Input_Proposal.xlsx',
+    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+)
+
+st.info("👆 Download the template, fill in your values, and upload it below.")
+
+# Upload Excel
+uploaded_excel = st.file_uploader("📤 Upload Filled Excel File", type=["xlsx"])
+
+
 if uploaded_excel is not None:
     try:
         df = pd.read_excel(uploaded_excel, engine="openpyxl")
         
-        # --- Data Cleaning and Type Enforcement (FIX for Streamlit ArrowTypeError) ---
+        # --- Data Cleaning and Type Enforcement (Necessary for replacement and display) ---
         df.columns = df.columns.str.strip()
         
         if 'Parameters' not in df.columns or 'Value' not in df.columns:
@@ -169,8 +185,10 @@ if uploaded_excel is not None:
         df["Value"] = df["Value"].astype(str)
         # --------------------------------------------------------------------------
 
-        st.success("✅ Excel loaded successfully!")
-        st.dataframe(df) 
+        st.success("✅ Excel loaded successfully! Scroll down to view all inputs.")
+        
+        # Display the entire DataFrame for user review
+        st.dataframe(df)
 
         if st.button("🚀 Generate Word Proposal"):
             try:
@@ -213,4 +231,4 @@ if uploaded_excel is not None:
     except Exception as e:
         st.error(f"❌ Error reading Excel: {e}. Please ensure the first sheet is a valid Excel format and has the required columns.")
 else:
-    st.info("📥 Please upload your Excel file to begin.")
+    st.info("📥 Please upload your filled Excel file to begin.")
