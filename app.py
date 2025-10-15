@@ -32,7 +32,7 @@ including those in **text boxes**, **headers**, and **footers**, while **preserv
 """)
 
 # ========== Default Excel Template Download ==========
-TEMPLATE_EXCEL_PATH = "input_proposal.xlsx"
+TEMPLATE_EXCEL_PATH = "Input_Proposal.xlsx"
 try:
     with open(TEMPLATE_EXCEL_PATH, "rb") as f:
         st.download_button(
