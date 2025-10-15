@@ -41,6 +41,7 @@ try:
             file_name="Proposal_Template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+    st.caption("ℹ️ Fill in this template with your inputs and upload it below to generate the Word document.")
 except FileNotFoundError:
     st.warning("⚠️ Default Excel template not found at the specified path.")
 
