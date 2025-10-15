@@ -12,6 +12,12 @@ if importlib.util.find_spec("openpyxl") is None:
 st.set_page_config(page_title="Proposal Auto Generator", layout="wide")
 st.title("📄 Techno-Commercial Proposal Auto Generator")
 
+enrich_logo_path = r"enrich_logo.png"
+try:
+    st.sidebar.image(enrich_logo_path, width=150)
+except:
+    st.sidebar.warning("Logo not found at provided path.")
+
 st.markdown("""
 Upload your Excel sheet with **Parameters** and **Value** columns.  
 The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically,  
