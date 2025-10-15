@@ -170,7 +170,7 @@ if uploaded_excel is not None:
         # --------------------------------------------------------------------------
 
         st.success("✅ Excel loaded successfully!")
-        st.dataframe(df.head(10)) 
+        st.dataframe(df) 
 
         if st.button("🚀 Generate Word Proposal"):
             try:
