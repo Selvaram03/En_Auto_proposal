@@ -3,6 +3,7 @@ import pandas as pd
 from docx import Document
 from io import BytesIO
 import re, tempfile, os, importlib.util, subprocess
+import zipfile
 
 # ========== Auto-install openpyxl if missing ==========
 if importlib.util.find_spec("openpyxl") is None:
@@ -21,7 +22,7 @@ except:
 st.markdown("""
 Upload your Excel sheet with **Parameters** and **Value** columns.  
 The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically,  
-including those in **headers** and **footers**.
+including those in **headers, footers, and text boxes/shapes**.
 """)
 
 # Upload Excel
@@ -30,12 +31,8 @@ uploaded_excel = st.file_uploader("📤 Upload Excel File", type=["xlsx"])
 # Template path (stored in GitHub repo)
 TEMPLATE_PATH = "input_template.docx"
 
-
 # ========== Core Function ==========
 def fill_template(df, template_path):
-    import re
-    from docx import Document
-
     # Clean headers
     df.columns = df.columns.str.strip()
     df["Parameters"] = df["Parameters"].astype(str).str.strip()
@@ -82,15 +79,44 @@ def fill_template(df, template_path):
         process_paragraphs(header.paragraphs)
         process_paragraphs(footer.paragraphs)
 
-        # Replace inside header/footer tables too
         for table in header.tables + footer.tables:
             for row in table.rows:
                 for cell in row.cells:
                     if "{{" in cell.text:
                         cell.text = replace_placeholders(cell.text)
 
-    return doc
+    # --- handle placeholders inside text boxes / shapes ---
+    def replace_in_textboxes(docx_path, param_dict):
+        with zipfile.ZipFile(docx_path, "r") as zip_ref:
+            xml_files = [f for f in zip_ref.namelist() if f.startswith("word/") and f.endswith(".xml")]
+            xml_data = {name: zip_ref.read(name).decode("utf-8") for name in xml_files}
 
+        def replace_placeholders_in_text(text):
+            for key, value in param_dict.items():
+                pattern = r"\{\{\s*" + re.escape(key) + r"\s*\}\}"
+                text = re.sub(pattern, value, text, flags=re.IGNORECASE)
+            return text
+
+        # Replace placeholders even inside <w:t> within textboxes
+        new_xml_data = {}
+        for name, content in xml_data.items():
+            if "{{" in content:
+                new_xml_data[name] = replace_placeholders_in_text(content)
+            else:
+                new_xml_data[name] = content
+
+        # Repackage docx
+        with zipfile.ZipFile(docx_path, "w") as zip_out:
+            for name, data in new_xml_data.items():
+                zip_out.writestr(name, data.encode("utf-8"))
+
+    # Save current doc to temp file, run XML replacement, reload
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        doc.save(tmp.name)
+        replace_in_textboxes(tmp.name, param_dict)
+        doc = Document(tmp.name)
+
+    return doc
 
 # ========== App Flow ==========
 if uploaded_excel is not None:
