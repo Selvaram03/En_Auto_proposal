@@ -19,9 +19,17 @@ for lib in required_libs:
 st.set_page_config(page_title="Proposal Auto Generator", layout="wide")
 st.title("📄 Techno-Commercial Proposal Auto Generator")
 
-# ========== Sidebar Template Selection ==========
-st.sidebar.header("⚙️ Select Template Type")
+# ========== Sidebar Layout ==========
+enrich_logo_path = r"enrich_logo.png"
 
+# 1️⃣ Logo first
+try:
+    st.sidebar.image(enrich_logo_path, width=150)
+except Exception:
+    st.sidebar.warning("⚠️ Logo not found or could not be loaded.")
+
+# 2️⃣ Template selection next
+st.sidebar.header("⚙️ Select Template Type")
 template_choice = st.sidebar.radio(
     "Choose Template:",
     ("EPC Template", "BESS Template")
@@ -35,18 +43,12 @@ else:
     TEMPLATE_PATH = "BESS_template.docx"
     TEMPLATE_EXCEL_PATH = "Input_BESS_Proposal.xlsx"
 
-# ========== Sidebar Logo ==========
-enrich_logo_path = r"enrich_logo.png"
-try:
-    st.sidebar.image(enrich_logo_path, width=150)
-except Exception:
-    st.sidebar.warning("Logo not found or could not be loaded.")
-
-# ========== Current Template Banner ==========
+# ========== Active Template Banner ==========
 st.markdown(
     f"""
     <div style="background-color:#f0f8ff;padding:12px;border-radius:10px;margin-bottom:10px;">
-        <b>🧩 Currently Selected Template:</b> <span style="color:#0056b3;">{template_choice}</span>
+        <b>🧩 Currently Selected Template:</b> 
+        <span style="color:#0056b3;">{template_choice}</span>
     </div>
     """,
     unsafe_allow_html=True
