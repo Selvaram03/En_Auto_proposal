@@ -1,12 +1,17 @@
 # shared_app.py
-import streamlit as st
-import pandas as pd
+import re
 from docx import Document
 from io import BytesIO
-import re, os, tempfile
+import tempfile
+import os
+import streamlit as st
 
+# ----------------------------
+# Excel Handling
+# ----------------------------
 def load_excel(uploaded_file):
     """Read Excel and return dataframe with proper column checks."""
+    import pandas as pd
     try:
         df = pd.read_excel(uploaded_file, engine="openpyxl")
         df.columns = df.columns.str.strip()
@@ -20,75 +25,82 @@ def load_excel(uploaded_file):
         st.error(f"❌ Error reading Excel: {e}")
         return None
 
+# ----------------------------
+# Placeholder Replacement
+# ----------------------------
 def replace_placeholders(doc, param_dict):
     """
     Replace placeholders {{Parameter}} in:
       - Paragraphs
-      - Tables
-      - Headers
-      - Footers
+      - Tables (including nested)
+      - Headers and Footers
       - Text boxes (shapes)
-    Handles special characters and empty keys/values.
+    Handles empty keys, None values, and special characters.
     """
     pattern_template = r"\{\{\s*{}\s*\}\}"
 
-    # Helper to safely replace text in runs
     def replace_in_paragraphs(paragraphs):
         for p in paragraphs:
             full_text = "".join(run.text for run in p.runs)
             new_text = full_text
             for key, val in param_dict.items():
-                key_str = str(key) if key is not None else ""
-                val_str = str(val) if val is not None else ""
-                pattern = pattern_template.format(re.escape(key_str))
-                new_text = re.sub(pattern, val_str, new_text, flags=re.IGNORECASE)
+                if key is None or str(key).strip() == "":
+                    continue  # skip empty keys
+                key_str = str(key).strip()
+                val_str = "" if val is None else str(val)
+                try:
+                    pattern = pattern_template.format(re.escape(key_str))
+                    new_text = re.sub(pattern, val_str, new_text, flags=re.IGNORECASE)
+                except Exception:
+                    continue
             if new_text != full_text:
-                # Clear existing runs
                 for run in p.runs:
                     run.text = ""
                 p.add_run(new_text)
 
-    # 1️⃣ Replace in main paragraphs
+    # 1️⃣ Main paragraphs
     replace_in_paragraphs(doc.paragraphs)
 
-    # 2️⃣ Replace in tables
-    for table in doc.tables:
+    # 2️⃣ Tables (recursive)
+    def replace_in_table(table):
         for row in table.rows:
             for cell in row.cells:
                 replace_in_paragraphs(cell.paragraphs)
-                # Recursively replace in nested tables
                 for nested_table in cell.tables:
-                    for n_row in nested_table.rows:
-                        for n_cell in n_row.cells:
-                            replace_in_paragraphs(n_cell.paragraphs)
+                    replace_in_table(nested_table)
+    for table in doc.tables:
+        replace_in_table(table)
 
-    # 3️⃣ Replace in headers and footers
+    # 3️⃣ Headers and Footers
     for section in doc.sections:
         replace_in_paragraphs(section.header.paragraphs)
         replace_in_paragraphs(section.footer.paragraphs)
         for table in section.header.tables + section.footer.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    replace_in_paragraphs(cell.paragraphs)
+            replace_in_table(table)
 
-    # 4️⃣ Replace in text boxes (shapes)
-    for shape in doc.inline_shapes:
-        try:
-            if shape.text_frame:
-                for paragraph in shape.text_frame.paragraphs:
-                    replace_in_paragraphs([paragraph])
-        except AttributeError:
-            pass
+    # 4️⃣ Inline shapes / text boxes (if present)
+    if hasattr(doc, 'inline_shapes'):
+        for shape in doc.inline_shapes:
+            try:
+                if shape.text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        replace_in_paragraphs([paragraph])
+            except AttributeError:
+                continue
 
-def generate_word(doc_template_path, df):
-    """Generate Word document from template and dataframe."""
-    doc = Document(doc_template_path)
+# ----------------------------
+# Generate Word Document
+# ----------------------------
+def generate_word(template_path, df):
+    doc = Document(template_path)
     param_dict = {p: v for p, v in zip(df["Parameters"], df["Value"])}
     replace_placeholders(doc, param_dict)
     return doc
 
+# ----------------------------
+# Download Helpers
+# ----------------------------
 def download_docx(doc, filename):
-    """Show download button for Word document."""
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
@@ -100,7 +112,6 @@ def download_docx(doc, filename):
     )
 
 def download_pdf(doc, filename):
-    """Convert to PDF if docx2pdf available and show download."""
     try:
         from docx2pdf import convert
         with tempfile.TemporaryDirectory() as tmpdir:
