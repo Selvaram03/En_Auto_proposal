@@ -30,7 +30,7 @@ Upload your Excel sheet with **Parameters** and **Value** columns. The app will 
 """)
 
 # ========== Default Excel Template Download ==========
-TEMPLATE_EXCEL_PATH = "Input_Proposal.xlsx"
+TEMPLATE_EXCEL_PATH = "Input_EPC_Proposal.xlsx"
 try:
     with open(TEMPLATE_EXCEL_PATH, "rb") as f:
         st.download_button(
@@ -47,7 +47,7 @@ except FileNotFoundError:
 uploaded_excel = st.file_uploader("📤 Upload Excel File", type=["xlsx"])
 
 # Template path
-TEMPLATE_PATH = "input_template.docx"
+TEMPLATE_PATH = "EPC_template.docx"
 
 # ========== Core Function Helpers ==========
 
