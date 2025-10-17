@@ -19,40 +19,64 @@ for lib in required_libs:
 st.set_page_config(page_title="Proposal Auto Generator", layout="wide")
 st.title("📄 Techno-Commercial Proposal Auto Generator")
 
+# ========== Sidebar Template Selection ==========
+st.sidebar.header("⚙️ Select Template Type")
+
+template_choice = st.sidebar.radio(
+    "Choose Template:",
+    ("EPC Template", "BESS Template")
+)
+
+# ========== Set Template Paths Based on Choice ==========
+if template_choice == "EPC Template":
+    TEMPLATE_PATH = "EPC_template.docx"
+    TEMPLATE_EXCEL_PATH = "Input_EPC_Proposal.xlsx"
+else:
+    TEMPLATE_PATH = "BESS_template.docx"
+    TEMPLATE_EXCEL_PATH = "Input_BESS_Proposal.xlsx"
+
+# ========== Sidebar Logo ==========
 enrich_logo_path = r"enrich_logo.png"
 try:
     st.sidebar.image(enrich_logo_path, width=150)
 except Exception:
-    st.sidebar.warning("Logo not found at provided path or could not be loaded.")
+    st.sidebar.warning("Logo not found or could not be loaded.")
 
+# ========== Current Template Banner ==========
+st.markdown(
+    f"""
+    <div style="background-color:#f0f8ff;padding:12px;border-radius:10px;margin-bottom:10px;">
+        <b>🧩 Currently Selected Template:</b> <span style="color:#0056b3;">{template_choice}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# ========== Instructions ==========
 st.markdown("""
-Upload your Excel sheet with **Parameters** and **Value** columns. The app will replace all placeholders in the Word template like `{{Parameter Name}}` automatically, including those in **text boxes**, **headers**, and **footers**.
+Upload your Excel sheet with **Parameters** and **Value** columns.  
+The app will automatically replace placeholders like `{{Parameter Name}}` in the Word template,  
+including those inside **text boxes**, **headers**, and **footers**.
 """)
 
-# ========== Default Excel Template Download ==========
-TEMPLATE_EXCEL_PATH = "Input_EPC_Proposal.xlsx"
+# ========== Excel Template Download ==========
 try:
     with open(TEMPLATE_EXCEL_PATH, "rb") as f:
         st.download_button(
-            label="📥 Download Excel Template",
+            label=f"📥 Download {template_choice} Excel Template",
             data=f,
-            file_name="Proposal_Template.xlsx",
+            file_name=os.path.basename(TEMPLATE_EXCEL_PATH),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    st.markdown("**ℹ️ Fill in this template with your inputs and upload it below to generate the Word document.**")
+    st.markdown("**ℹ️ Fill in this template and upload it below to generate your Word proposal.**")
 except FileNotFoundError:
-    st.warning("⚠️ Default Excel template not found at the specified path.")
+    st.warning(f"⚠️ {template_choice} Excel template not found at the specified path.")
 
-# Upload Excel
+# ========== File Upload ==========
 uploaded_excel = st.file_uploader("📤 Upload Excel File", type=["xlsx"])
 
-# Template path
-TEMPLATE_PATH = "EPC_template.docx"
-
-# ========== Core Function Helpers ==========
-
+# ========== Helper Functions ==========
 def replace_in_xml(doc_part, param_dict):
-    """Replaces text in a document part (body, header, or footer) using XML."""
     try:
         if doc_part.element is None:
             return
@@ -60,47 +84,35 @@ def replace_in_xml(doc_part, param_dict):
     except AttributeError:
         return
 
-    namespaces = {
-        'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-        'v': 'urn:schemas-microsoft-com:vml', 
-    }
-
+    namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'v': 'urn:schemas-microsoft-com:vml'}
     for key, value in param_dict.items():
         placeholder = "{{" + key + "}}"
         for elem in root.xpath('//w:t|//v:t', namespaces=namespaces):
             if elem.text and placeholder.lower() in elem.text.lower():
-                original_text = elem.text
                 pattern = r"\{\{\s*" + re.escape(key) + r"\s*\}\}"
-                new_text = re.sub(pattern, value, original_text, flags=re.IGNORECASE)
-                elem.text = new_text
+                elem.text = re.sub(pattern, value, elem.text, flags=re.IGNORECASE)
 
 def process_paragraphs(paragraphs, param_dict):
-    """Processes paragraphs using the standard docx API for formatting."""
     def replace_placeholders(text):
         for key, value in param_dict.items():
             pattern = r"\{\{\s*" + re.escape(key) + r"\s*\}\}"
             text = re.sub(pattern, value, text, flags=re.IGNORECASE)
         return text
-
     for para in paragraphs:
         if "{{" in para.text:
             full_text = "".join(run.text for run in para.runs)
             new_text = replace_placeholders(full_text)
             if new_text != full_text:
                 first_run = para.runs[0] if para.runs else None
-                first_run_style = first_run.style if first_run else None
-                first_run_font_size = first_run.font.size if first_run and first_run.font.size else None
+                font_size = first_run.font.size if first_run and first_run.font.size else None
                 for r in para.runs:
                     r.text = ""
                 new_run = para.add_run(new_text)
-                if first_run_style:
-                    new_run.style = first_run_style
                 new_run.font.name = 'Calibri'
-                if first_run_font_size:
-                     new_run.font.size = first_run_font_size
+                if font_size:
+                    new_run.font.size = font_size
 
 def process_cell(cell, param_dict):
-    """Processes paragraphs in a cell, including nested tables, for formatting fix."""
     process_paragraphs(cell.paragraphs, param_dict)
     for nested_table in cell.tables:
         for row in nested_table.rows:
@@ -133,17 +145,17 @@ def fill_template(df, template_path):
 
     return doc
 
-# ========== App Flow ==========
+# ========== Main Logic ==========
 if uploaded_excel is not None:
     try:
         df = pd.read_excel(uploaded_excel, engine="openpyxl")
         df.columns = df.columns.str.strip()
         if 'Parameters' not in df.columns or 'Value' not in df.columns:
-            st.error("❌ Error: The Excel sheet must contain columns named 'Parameters' and 'Value'.")
+            st.error("❌ The Excel must have 'Parameters' and 'Value' columns.")
             st.stop()
+
         df["Parameters"] = df["Parameters"].astype(str).str.strip()
         df["Value"] = df["Value"].astype(str)
-
         st.success("✅ Excel loaded successfully!")
         st.dataframe(df)
 
@@ -155,10 +167,10 @@ if uploaded_excel is not None:
                 buffer.seek(0)
 
                 st.download_button(
-                    label="⬇️ Download Word File",
+                    label=f"⬇️ Download {template_choice.replace(' Template','')} Word File",
                     data=buffer,
-                    file_name="Generated_Proposal.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    file_name=f"Generated_{template_choice.replace(' Template','')}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
 
                 try:
@@ -170,18 +182,18 @@ if uploaded_excel is not None:
                         convert(docx_path, pdf_path)
                         with open(pdf_path, "rb") as pdf_file:
                             st.download_button(
-                                label="⬇️ Download PDF File",
+                                label=f"⬇️ Download {template_choice.replace(' Template','')} PDF File",
                                 data=pdf_file,
-                                file_name="Generated_Proposal.pdf",
-                                mime="application/pdf",
+                                file_name=f"Generated_{template_choice.replace(' Template','')}.pdf",
+                                mime="application/pdf"
                             )
                 except Exception:
-                    st.warning("⚠️ PDF conversion skipped (requires MS Word on Windows/Linux with LibreOffice).")
+                    st.warning("⚠️ PDF conversion skipped (requires MS Word or LibreOffice).")
 
             except Exception as e:
                 st.error(f"❌ Error generating proposal: {e}")
 
     except Exception as e:
-        st.error(f"❌ Error reading Excel: {e}. Please ensure the first sheet is a valid Excel format and has the required columns.")
+        st.error(f"❌ Error reading Excel: {e}. Ensure the sheet is valid and has the correct columns.")
 else:
     st.info("📥 Please upload your Excel file to begin.")
