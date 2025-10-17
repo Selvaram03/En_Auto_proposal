@@ -225,4 +225,4 @@ if st.session_state.excel_df is not None and st.button("🚀 Generate Word Propo
     except Exception as e:
         st.error(f"❌ Error generating proposal: {e}")
 else:
-    st.info("📥 Please upload your Excel
+    st.info("📥 Please upload your Excel file to begin.")
