@@ -20,14 +20,12 @@ st.set_page_config(page_title="Proposal Auto Generator", layout="wide")
 st.title("📄 Techno-Commercial Proposal Auto Generator")
 
 # ========== SESSION STATE SETUP ==========
-if 'uploaded_excel' not in st.session_state:
-    st.session_state.uploaded_excel = None
-
-if 'generated_doc' not in st.session_state:
-    st.session_state.generated_doc = None
-
 if 'prev_template' not in st.session_state:
     st.session_state.prev_template = None
+if 'excel_uploaded' not in st.session_state:
+    st.session_state.excel_uploaded = None
+if 'generated_doc' not in st.session_state:
+    st.session_state.generated_doc = None
 
 # ========== Sidebar Layout ==========
 enrich_logo_path = r"enrich_logo.png"
@@ -47,9 +45,10 @@ template_choice = st.sidebar.radio(
 
 # ========== Reset previous data if template changed ==========
 if st.session_state.prev_template != template_choice:
-    st.session_state.uploaded_excel = None
+    st.session_state.excel_uploaded = None
     st.session_state.generated_doc = None
     st.session_state.prev_template = template_choice
+    st.info("🔄 Template changed — previous uploaded data cleared. Please upload new Excel for this template.")
 
 # ========== Set Template Paths Based on Choice ==========
 if template_choice == "EPC Template":
@@ -91,9 +90,9 @@ except FileNotFoundError:
     st.warning(f"⚠️ {template_choice} Excel template not found at the specified path.")
 
 # ========== File Upload ==========
-uploaded_excel = st.file_uploader(
-    "📤 Upload Excel File", type=["xlsx"], key='uploaded_excel'
-)
+uploaded_excel = st.file_uploader("📤 Upload Excel File", type=["xlsx"])
+if uploaded_excel is not None:
+    st.session_state.excel_uploaded = uploaded_excel
 
 # ========== Helper Functions ==========
 def replace_in_xml(doc_part, param_dict):
@@ -104,7 +103,8 @@ def replace_in_xml(doc_part, param_dict):
     except AttributeError:
         return
 
-    namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'v': 'urn:schemas-microsoft-com:vml'}
+    namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main', 
+                  'v': 'urn:schemas-microsoft-com:vml'}
     for key, value in param_dict.items():
         placeholder = "{{" + key + "}}"
         for elem in root.xpath('//w:t|//v:t', namespaces=namespaces):
@@ -166,9 +166,9 @@ def fill_template(df, template_path):
     return doc
 
 # ========== Main Logic ==========
-if uploaded_excel is not None:
+if st.session_state.excel_uploaded is not None:
     try:
-        df = pd.read_excel(uploaded_excel, engine="openpyxl")
+        df = pd.read_excel(st.session_state.excel_uploaded, engine="openpyxl")
         df.columns = df.columns.str.strip()
         if 'Parameters' not in df.columns or 'Value' not in df.columns:
             st.error("❌ The Excel must have 'Parameters' and 'Value' columns.")
