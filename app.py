@@ -19,6 +19,16 @@ for lib in required_libs:
 st.set_page_config(page_title="Proposal Auto Generator", layout="wide")
 st.title("📄 Techno-Commercial Proposal Auto Generator")
 
+# ========== SESSION STATE SETUP ==========
+if 'uploaded_excel' not in st.session_state:
+    st.session_state.uploaded_excel = None
+
+if 'generated_doc' not in st.session_state:
+    st.session_state.generated_doc = None
+
+if 'prev_template' not in st.session_state:
+    st.session_state.prev_template = None
+
 # ========== Sidebar Layout ==========
 enrich_logo_path = r"enrich_logo.png"
 
@@ -34,6 +44,12 @@ template_choice = st.sidebar.radio(
     "Choose Template:",
     ("EPC Template", "BESS Template")
 )
+
+# ========== Reset previous data if template changed ==========
+if st.session_state.prev_template != template_choice:
+    st.session_state.uploaded_excel = None
+    st.session_state.generated_doc = None
+    st.session_state.prev_template = template_choice
 
 # ========== Set Template Paths Based on Choice ==========
 if template_choice == "EPC Template":
@@ -75,7 +91,9 @@ except FileNotFoundError:
     st.warning(f"⚠️ {template_choice} Excel template not found at the specified path.")
 
 # ========== File Upload ==========
-uploaded_excel = st.file_uploader("📤 Upload Excel File", type=["xlsx"])
+uploaded_excel = st.file_uploader(
+    "📤 Upload Excel File", type=["xlsx"], key='uploaded_excel'
+)
 
 # ========== Helper Functions ==========
 def replace_in_xml(doc_part, param_dict):
@@ -164,6 +182,8 @@ if uploaded_excel is not None:
         if st.button("🚀 Generate Word Proposal"):
             try:
                 filled_doc = fill_template(df, TEMPLATE_PATH)
+                st.session_state.generated_doc = filled_doc  # store in session
+
                 buffer = BytesIO()
                 filled_doc.save(buffer)
                 buffer.seek(0)
