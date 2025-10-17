@@ -37,10 +37,10 @@ template_choice = st.sidebar.radio(
 
 # ========== Set Template Paths Based on Choice ==========
 if template_choice == "EPC Template":
-    TEMPLATE_PATH = "EPC_template.docx"
+    TEMPLATE_PATH = "EPC_Template.docx"
     TEMPLATE_EXCEL_PATH = "Input_EPC_Proposal.xlsx"
 else:
-    TEMPLATE_PATH = "BESS_template.docx"
+    TEMPLATE_PATH = "BESS_Template.docx"
     TEMPLATE_EXCEL_PATH = "Input_BESS_Proposal.xlsx"
 
 # ========== Active Template Banner ==========
