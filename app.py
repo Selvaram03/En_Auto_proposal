@@ -24,6 +24,8 @@ if 'prev_template' not in st.session_state:
     st.session_state.prev_template = None
 if 'excel_uploaded' not in st.session_state:
     st.session_state.excel_uploaded = None
+if 'excel_df' not in st.session_state:
+    st.session_state.excel_df = None
 if 'generated_doc' not in st.session_state:
     st.session_state.generated_doc = None
 
@@ -46,6 +48,7 @@ template_choice = st.sidebar.radio(
 # ========== Reset previous data if template changed ==========
 if st.session_state.prev_template != template_choice:
     st.session_state.excel_uploaded = None
+    st.session_state.excel_df = None
     st.session_state.generated_doc = None
     st.session_state.prev_template = template_choice
     st.info("🔄 Template changed — previous uploaded data cleared. Please upload new Excel for this template.")
@@ -173,49 +176,53 @@ if st.session_state.excel_uploaded is not None:
         if 'Parameters' not in df.columns or 'Value' not in df.columns:
             st.error("❌ The Excel must have 'Parameters' and 'Value' columns.")
             st.stop()
-
         df["Parameters"] = df["Parameters"].astype(str).str.strip()
         df["Value"] = df["Value"].astype(str)
-        st.success("✅ Excel loaded successfully!")
-        st.dataframe(df)
-
-        if st.button("🚀 Generate Word Proposal"):
-            try:
-                filled_doc = fill_template(df, TEMPLATE_PATH)
-                st.session_state.generated_doc = filled_doc  # store in session
-
-                buffer = BytesIO()
-                filled_doc.save(buffer)
-                buffer.seek(0)
-
-                st.download_button(
-                    label=f"⬇️ Download {template_choice.replace(' Template','')} Word File",
-                    data=buffer,
-                    file_name=f"Generated_{template_choice.replace(' Template','')}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-
-                try:
-                    from docx2pdf import convert
-                    with tempfile.TemporaryDirectory() as tmpdir:
-                        docx_path = os.path.join(tmpdir, "temp.docx")
-                        pdf_path = os.path.join(tmpdir, "temp.pdf")
-                        filled_doc.save(docx_path)
-                        convert(docx_path, pdf_path)
-                        with open(pdf_path, "rb") as pdf_file:
-                            st.download_button(
-                                label=f"⬇️ Download {template_choice.replace(' Template','')} PDF File",
-                                data=pdf_file,
-                                file_name=f"Generated_{template_choice.replace(' Template','')}.pdf",
-                                mime="application/pdf"
-                            )
-                except Exception:
-                    st.warning("⚠️ PDF conversion skipped (requires MS Word or LibreOffice).")
-
-            except Exception as e:
-                st.error(f"❌ Error generating proposal: {e}")
+        st.session_state.excel_df = df  # store dataframe
 
     except Exception as e:
         st.error(f"❌ Error reading Excel: {e}. Ensure the sheet is valid and has the correct columns.")
+
+# ========== Display Table ==========
+if st.session_state.excel_df is not None:
+    st.success("✅ Excel loaded successfully!")
+    st.dataframe(st.session_state.excel_df)
+
+# ========== Generate Proposal ==========
+if st.session_state.excel_df is not None and st.button("🚀 Generate Word Proposal"):
+    try:
+        filled_doc = fill_template(st.session_state.excel_df, TEMPLATE_PATH)
+        st.session_state.generated_doc = filled_doc  # store in session
+
+        buffer = BytesIO()
+        filled_doc.save(buffer)
+        buffer.seek(0)
+
+        st.download_button(
+            label=f"⬇️ Download {template_choice.replace(' Template','')} Word File",
+            data=buffer,
+            file_name=f"Generated_{template_choice.replace(' Template','')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+
+        try:
+            from docx2pdf import convert
+            with tempfile.TemporaryDirectory() as tmpdir:
+                docx_path = os.path.join(tmpdir, "temp.docx")
+                pdf_path = os.path.join(tmpdir, "temp.pdf")
+                filled_doc.save(docx_path)
+                convert(docx_path, pdf_path)
+                with open(pdf_path, "rb") as pdf_file:
+                    st.download_button(
+                        label=f"⬇️ Download {template_choice.replace(' Template','')} PDF File",
+                        data=pdf_file,
+                        file_name=f"Generated_{template_choice.replace(' Template','')}.pdf",
+                        mime="application/pdf"
+                    )
+        except Exception:
+            st.warning("⚠️ PDF conversion skipped (requires MS Word or LibreOffice).")
+
+    except Exception as e:
+        st.error(f"❌ Error generating proposal: {e}")
 else:
-    st.info("📥 Please upload your Excel file to begin.")
+    st.info("📥 Please upload your Excel
